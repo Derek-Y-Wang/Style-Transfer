@@ -8,6 +8,8 @@ from tensorflow.keras.applications import vgg19
 wave_loc = "./imgs/starry_night_full.jpg"
 wave_img = cv2.imread(wave_loc)
 wave_img = cv2.cvtColor(wave_img, cv2.COLOR_BGR2RGB)
+wave_img = cv2.resize(wave_img, (512, 512))
+
 # plt.imshow(wave_img)
 # plt.show()
 
@@ -17,6 +19,9 @@ base_model.summary()
 
 golden_gate = cv2.imread("./imgs/golden_gate.jpg", cv2.COLOR_BGR2RGB)
 golden_gate = cv2.cvtColor(golden_gate, cv2.COLOR_BGR2RGB)
+golden_gate = cv2.resize(golden_gate, (512, 512))
+# plt.imshow(golden_gate)
+# plt.show()
 
 style_img = wave_img
 content_img = golden_gate
@@ -64,8 +69,8 @@ wave_output = base_model(processed_wave)
 golden_gate_content = golden_gate_output[0]
 
 
-def get_content_loss(new_image_content,base_image_content):
-    print(new_image_content)
+def get_content_loss(new_image_content, base_image_content):
+    # print(len(new_image_content))
     return np.mean(np.square(new_image_content-base_image_content))
 
 
@@ -110,4 +115,50 @@ def get_total_loss(new_image_output, base_content_image_output,
 
     return (1 - alpha) * style_loss + alpha * content_loss
 
-get_total_loss(wave_output, golden_gate_output, wave_output)
+
+print(get_total_loss(wave_output, golden_gate_output, wave_output))
+
+
+
+base_style_outputs = base_model(processed_wave)
+base_content_output = base_model(processed_gate)
+# print(tf.random.normal(processed_gate.shape))
+processed_content_var = tf.Variable(processed_gate+tf.random.normal(processed_gate.shape)) #*tf.random.normal(processed_gate.shape)
+
+optimizer = tf.optimizers.Adam(5,beta_1=.99,epsilon=1e-3)
+
+from IPython.display import display, clear_output
+images = []
+losses = []
+
+i=0
+best_loss = 200000
+min_vals = VGG_BIASES
+max_vals = 255 + VGG_BIASES
+
+for i in range(100):
+    with tf.GradientTape() as tape:
+        tape.watch(processed_content_var)
+        content_var_outputs = base_model(processed_content_var)
+        loss = get_total_loss(content_var_outputs, base_content_output,
+                              base_style_outputs, alpha=.97)
+        grad = tape.gradient(loss, processed_content_var)
+        losses.append(loss)
+        optimizer.apply_gradients(zip([grad], [processed_content_var]))
+        clipped = tf.clip_by_value(processed_content_var, min_vals, max_vals)
+        processed_content_var.assign(clipped)
+        if i % 5 == 0:
+            images.append(deprocess(processed_content_var))
+        if loss < best_loss:
+            best_image = processed_content_var
+            best_loss = loss
+        display(loss)
+        clear_output(wait=True)
+
+deprocessed_best_image = deprocess(best_image)
+plt.figure(figsize=(10,10))
+plt.imshow(deprocessed_best_image[0]/255)
+plt.show()
+
+
+
